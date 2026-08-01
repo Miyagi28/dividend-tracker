@@ -80,9 +80,11 @@
   .hero-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;position:relative;z-index:2;}
   .hero-stat{background:var(--surface);border:1px solid var(--border-soft);border-radius:14px;padding:12px 14px;backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:flex-start;width:100%;font-family:inherit;cursor:pointer;transition:.15s;}
   .hero-stat:hover{border-color:var(--gold);background:var(--surface-hi);}
+  .growth-rings{cursor:pointer;}
+  .growth-rings:hover{opacity:1 !important;}
   .hero-stat .label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;}
   .hero-stat .value{display:block;font-size:clamp(18px,5vw,24px);font-family:var(--font-display);font-weight:800;color:var(--gold-bright);}
-  .growth-rings{position:absolute;right:-40px;top:-10px;width:220px;height:220px;opacity:.9;pointer-events:none;z-index:0;}
+  .growth-rings{position:absolute;right:-40px;top:-10px;width:220px;height:220px;opacity:.9;z-index:2;}
   @media (max-width:560px){ .growth-rings{width:150px;height:150px;right:-24px;top:-6px;opacity:.6;} }
 
   section{margin-top:22px;}
@@ -116,6 +118,8 @@
   .scroll-table table.wide{table-layout:auto;width:auto;min-width:100%;}
   .scroll-table table.wide th,.scroll-table table.wide td{white-space:nowrap;}
   .scroll-table table.wide td:first-child{white-space:normal;min-width:96px;}
+  .sortable-th{cursor:pointer;user-select:none;white-space:nowrap;}
+  .sortable-th:hover{color:var(--gold-bright);}
   th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border-soft);overflow-wrap:break-word;word-break:break-word;}
   th{color:var(--text-dim);font-weight:500;font-size:11.5px;letter-spacing:.03em;}
   td.num, th.num{text-align:right;font-variant-numeric:tabular-nums;}
@@ -231,6 +235,7 @@
     <button id="notifBellBtn" class="notif-bell" type="button" aria-label="お知らせ">🔔<span id="notifBadge" class="notif-badge" style="display:none;">0</span></button>
     <p class="eyebrow">Dividend Harvest</p>
     <h1>配当の実り</h1>
+    <p class="hint" id="portfolioModeHint" style="margin:2px 0 12px;">🎯 右上の年輪をタップすると「配当ポートフォリオ集計モード」を切り替えられます。ONの間は、成長目的として個別設定した銘柄（VTIなど）をトップの集計から除外します。</p>
     <div class="hero-grid">
       <button class="hero-stat" type="button" data-jump="cardYearSummary"><span class="label">累計受取配当金</span><span class="value" id="statTotal">¥0</span></button>
       <button class="hero-stat" type="button" data-jump="cardYearSummary"><span class="label">今年の受取</span><span class="value" id="statYear">¥0</span></button>
@@ -238,6 +243,8 @@
       <button class="hero-stat" type="button" data-jump="dataManageSection"><span class="label">記録件数</span><span class="value" id="statCount">0件</span></button>
       <button class="hero-stat" type="button" data-jump="holdingsSection"><span class="label">取得額合計</span><span class="value" id="statCost">¥0</span></button>
       <button class="hero-stat" type="button" data-jump="cardYieldDist"><span class="label">想定利回り</span><span class="value" id="statYield">-</span></button>
+      <button class="hero-stat" type="button" data-jump="holdingsSection"><span class="label">評価額合計</span><span class="value" id="statEvalValue">-</span></button>
+      <button class="hero-stat" type="button" data-jump="holdingsSection"><span class="label">評価損益合計</span><span class="value" id="statProfitLoss">-</span></button>
     </div>
     <div id="dashboardGrid" class="dashboard-grid" style="margin-top:10px;"></div>
     <svg id="growthRings" class="growth-rings" viewBox="0 0 220 220"></svg>
@@ -289,7 +296,7 @@
     </div>
     <div class="chart-card" id="cardYearSummary">
       <h2>年間サマリー<button class="info-btn" type="button" aria-label="説明">ⓘ</button></h2>
-      <p class="hint hint-collapsible">年をタップすると、その年に絞り込まれます（右上の年セレクトと連動）。今年など途中の年は前年比が参考値になる点にご注意ください。</p>
+      <p class="hint hint-collapsible">年をタップすると、その年に絞り込まれます（右上の年セレクトと連動）。今年など途中の年は前年比が参考値になる点にご注意ください。「利回り」は現在の保有銘柄・取得額を全ての年に固定して当てはめた参考値です（株価の変動は反映されません）。買い増しなどで保有状況が変わると、過去の年の表示も遡って変化します。</p>
       <div id="yearSummaryWrap"></div>
     </div>
     <div class="chart-card" id="cardBroker">
@@ -316,6 +323,7 @@
         <button class="toggle-btn col-toggle-btn active" type="button" data-col="quantity">保有数量</button>
         <button class="toggle-btn col-toggle-btn active" type="button" data-col="cost">取得額</button>
         <button class="toggle-btn col-toggle-btn active" type="button" data-col="yield">利回り</button>
+        <button class="toggle-btn col-toggle-btn active" type="button" data-col="pl">評価損益</button>
       </div>
       <div id="stockTableWrap"></div>
     </div>
@@ -365,7 +373,11 @@
     <p class="hint hint-collapsible">お持ちの株数・口数・取得単価を手入力で登録できます。登録した内容は「銘柄別ランキング」に反映され、一覧・編集はそちらから行えます（行をタップすると編集・削除ができます）。</p>
     <div class="manage-actions">
       <button id="addHoldingBtn" class="primary" type="button">＋ 銘柄を追加</button>
+      <button id="assetImportBtn" type="button">資産評価CSVを取り込む（楽天証券・SBI証券）</button>
     </div>
+    <input type="file" id="assetImportFileInput" accept=".csv" hidden>
+    <div id="assetImportStatus" class="hint"></div>
+    <p class="hint" style="margin:8px 0 0;">再投資型ファンドは現金配当が発生しないため、初回登録時は自動的に「配当ポートフォリオの集計」から除外されます（取得額合計・評価額合計・利回りなど）。含める/除外するは銘柄ごとに保有銘柄の編集画面で個別に変更できます。</p>
   </section>
 
   <section class="data-manage">
@@ -484,12 +496,12 @@
       </select>
     </div>
     <div class="map-row"><label>取得単価</label><input id="holdingPrice" type="number" min="0" step="0.01" placeholder="例：1500（1株あたり）"></div>
+    <div class="map-row"><label>現在値<button class="info-btn" type="button" aria-label="説明">ⓘ</button></label><input id="holdingCurrentPrice" type="number" min="0" step="0.01" placeholder="例：1650（1株あたり、任意）"></div>
+    <p class="hint hint-collapsible" style="margin:-6px 0 8px;">現在値を入力すると評価額・評価損益が自動計算されます（取得単価と同じ単位・通貨で入力してください）。資産評価CSVに対応していない証券会社の場合は、ここに手入力できます。</p>
     <div class="map-row" id="perTenThousandRow" style="display:none;">
-      <label style="width:auto;flex:0 0 auto;margin-right:8px;"><input type="checkbox" id="holdingPerTenThousand" checked style="width:auto;margin-right:6px;vertical-align:middle;">基準価額は1万口あたりの表示</label>
+      <label style="width:auto;flex:0 0 auto;margin-right:8px;"><input type="checkbox" id="holdingPerTenThousand" checked style="width:auto;margin-right:6px;vertical-align:middle;">基準価額は1万口あたりの表示<button class="info-btn" type="button" aria-label="説明">ⓘ</button></label>
     </div>
-    <div class="map-row" id="perTenThousandHintRow" style="display:none;">
-      <p class="hint" style="margin:0;">投資信託の基準価額は通常「1万口あたり」で表示されます（例：楽天・SCHDの基準価額12,345円など）。チェックを入れると自動で1口あたりに換算して利回りを計算します。1口単価そのものを入力した場合はチェックを外してください。</p>
-    </div>
+    <p class="hint hint-collapsible" id="perTenThousandHintRow" style="margin:0 0 8px;">投資信託の基準価額は通常「1万口あたり」で表示されます（例：楽天・SCHDの基準価額12,345円など）。チェックを入れると自動で1口あたりに換算して利回りを計算します。1口単価そのものを入力した場合はチェックを外してください。</p>
     <div class="map-row"><label>取得単価の通貨</label>
       <select id="holdingCurrency">
         <option value="JPY">円</option>
@@ -497,6 +509,9 @@
       </select>
     </div>
     <div class="map-row"><label>メモ</label><textarea id="holdingMemo" rows="3" placeholder="例：連続増配株として長期保有予定。株主優待目当てで購入。" style="flex:1;background:var(--surface-solid);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-family:var(--font-body);font-size:13.5px;resize:vertical;"></textarea></div>
+    <div class="map-row" id="distributionTypeRow" style="display:none;"><label>分配金コース</label><span id="distributionTypeDisplay" style="padding-top:8px;color:var(--text-dim);"></span></div>
+    <div class="map-row"><label style="width:auto;flex:0 0 auto;margin-right:8px;"><input type="checkbox" id="holdingIncludeInYield" checked style="width:auto;margin-right:6px;vertical-align:middle;">配当ポートフォリオの集計に含める<button class="info-btn" type="button" aria-label="説明">ⓘ</button></label></div>
+    <p class="hint hint-collapsible" style="margin:-6px 0 8px;">VTIやS&amp;P500インデックスファンドなど「配当目的ではなく値上がり益（成長）目的」で保有している銘柄はチェックを外してください。トップの取得額合計・評価額合計・評価損益合計・想定利回りのすべてから除外されます（銘柄別ランキングの各行では引き続き個別に確認できます）。</p>
     <div class="map-row"><label style="width:auto;flex:0 0 auto;margin-right:8px;"><input type="checkbox" id="holdingHasBenefit" style="width:auto;margin-right:6px;vertical-align:middle;">株主優待あり🎁</label></div>
     <div id="benefitRow" style="display:none;">
       <div class="map-row"><label>優待内容</label><input id="holdingBenefitNote" type="text" placeholder="例：クオカード1000円分・年1回"></div>
@@ -785,6 +800,11 @@ const usdOnly = (entries)=> entries.filter(e=>e.currency==='USD');
 // ドル建て配当金を円換算して合算するかどうかの設定（ページを開いている間のみ有効）
 /* ============ 銘柄名の統合（名寄せ） ============ */
 let stockAliasMap = {}; // { 表記ゆれ: 正式名称 }
+// ONの間は「配当ポートフォリオの集計に含める」がOFFの銘柄（成長目的の保有）を除外して集計する
+let portfolioModeOn = true;
+function yieldRelevantHoldings(){
+  return portfolioModeOn ? allHoldings.filter(h=>h.includeInYield !== false) : allHoldings;
+}
 function canonName(name){
   return stockAliasMap[name] || name;
 }
@@ -1322,6 +1342,162 @@ function parseMufg(text){
   return out;
 }
 
+/* ============ 資産評価（保有残高）CSVパーサー ============ */
+// 楽天証券「資産残高」CSV：株式（日本株・米国株、■口座見出しで複数セクションに分かれる形式）
+function parseAssetBalanceStocks(text, broker){
+  const rows = parseCSV(text);
+  const out = [];
+  let colMap = null;
+  let currentAccountRaw = '';
+  const numAt = (r, name)=>{
+    if(!colMap || colMap[name]==null) return null;
+    const s = String(r[colMap[name]]||'').replace(/[",]/g,'').trim();
+    const n = parseFloat(s);
+    return isFinite(n) ? n : null;
+  };
+  for(const r of rows){
+    const first = String(r[0]||'').trim();
+    if(!first && r.every(c=>!String(c||'').trim())) continue;
+    if(first.startsWith('■')){
+      currentAccountRaw = first.replace(/^■/,'').trim();
+      colMap = null;
+      continue;
+    }
+    if(first === '銘柄コード' || first === 'ティッカー'){
+      colMap = {};
+      r.forEach((h,i)=>{ colMap[String(h||'').trim()] = i; });
+      continue;
+    }
+    if(!colMap) continue;
+    const nameIdx = colMap['銘柄名'];
+    if(nameIdx == null) continue;
+    const name = String(r[nameIdx]||'').trim();
+    if(!name) continue; // 合計行など銘柄名が空の行はスキップ
+
+    const quantity = numAt(r, '保有数量［株］');
+    if(quantity == null || quantity <= 0) continue;
+    const avgPrice = numAt(r, '平均取得価額［円］') ?? numAt(r, '平均取得価額［USドル］');
+    const currentPrice = numAt(r, '現在値［円］') ?? numAt(r, '現在値［USドル］');
+    const evalValue = numAt(r, '時価評価額［円］') ?? numAt(r, '時価評価額［USドル］');
+    const profitLoss = numAt(r, '評価損益［円］') ?? numAt(r, '評価損益［USドル］');
+    const currencyIdx = colMap['表示通貨'];
+    const currency = (currencyIdx!=null && String(r[currencyIdx]||'').includes('USドル')) ? 'USD' : 'JPY';
+    const accountType = /NISA/.test(currentAccountRaw) ? 'NISA口座' : '特定口座';
+
+    out.push({ broker, accountType, stockName:name, quantity, unit:'株', acquisitionPrice:avgPrice, currency, priceIsPerTenThousand:false, currentPrice, evalValue, profitLoss, distributionType:null, assetType: currency==='USD' ? 'stock-us' : 'stock-jp' });
+  }
+  return out;
+}
+
+// 楽天証券「資産残高」CSV：投資信託（1行1レコードのフラット形式、口座区分は列で保持）
+function parseAssetBalanceFunds(text, broker){
+  const rows = parseCSV(text);
+  if(rows.length===0) return [];
+  const colMap = {};
+  rows[0].forEach((h,i)=>{ colMap[String(h||'').trim()] = i; });
+  const numAt = (r, name)=>{
+    if(colMap[name]==null) return null;
+    const s = String(r[colMap[name]]||'').replace(/[",]/g,'').trim();
+    const n = parseFloat(s);
+    return isFinite(n) ? n : null;
+  };
+  const out = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    const nameIdx = colMap['ファンド'];
+    if(nameIdx == null) continue;
+    const name = String(r[nameIdx]||'').trim();
+    if(!name) continue;
+    const quantity = numAt(r, '保有数量[口]');
+    if(quantity == null || quantity <= 0) continue;
+    const avgPrice = numAt(r, '平均取得価額[円]');
+    const currentPrice = numAt(r, '基準価額[円]');
+    const evalValue = numAt(r, '時価評価額[円]');
+    const profitLoss = numAt(r, '評価損益[円]');
+    const accountRawIdx = colMap['口座区分'];
+    const accountRaw = accountRawIdx!=null ? String(r[accountRawIdx]||'').trim() : '';
+    const accountType = /NISA/.test(accountRaw) ? 'NISA口座' : '特定口座';
+    const distIdx = colMap['分配金コース'];
+    const distributionType = distIdx!=null ? (String(r[distIdx]||'').trim() || null) : null;
+
+    out.push({ broker, accountType, stockName:name, quantity, unit:'口', acquisitionPrice:avgPrice, currency:'JPY', priceIsPerTenThousand:true, currentPrice, evalValue, profitLoss, distributionType, assetType:'fund' });
+  }
+  return out;
+}
+
+// SBI証券「保有証券一覧」CSV：株式・投資信託が1ファイルに混在する形式
+function parseAssetBalanceSbi(text, broker){
+  const rows = parseCSV(text);
+  const out = [];
+  let mode = null; // 'stock' | 'fund'
+  let accountType = '特定口座';
+  let colMap = null;
+  const numAt = (r, name)=>{
+    if(!colMap || colMap[name]==null) return null;
+    const s = String(r[colMap[name]]||'').replace(/[",]/g,'').trim();
+    const n = parseFloat(s);
+    return isFinite(n) ? n : null;
+  };
+  for(const r of rows){
+    const first = String(r[0]||'').trim();
+    if(!first && r.every(c=>!String(c||'').trim())) continue;
+    if(/^株式（.+）$/.test(first)){
+      mode='stock'; colMap=null;
+      accountType = /NISA|ＮＩＳＡ/.test(first) ? 'NISA口座' : '特定口座';
+      continue;
+    }
+    if(/^投資信託（.+）$/.test(first)){
+      mode='fund'; colMap=null;
+      accountType = /NISA|ＮＩＳＡ/.test(first) ? 'NISA口座' : '特定口座';
+      continue;
+    }
+    if(first === '銘柄コード'){ colMap={}; r.forEach((h,i)=>{ colMap[String(h||'').trim()]=i; }); continue; }
+    if(first === 'ファンド名'){ colMap={}; r.forEach((h,i)=>{ colMap[String(h||'').trim()]=i; }); continue; }
+    if(!colMap || !mode) continue; // 合計行やヘッダー確定前の行はスキップ
+
+    if(mode === 'stock'){
+      const nameIdx = colMap['銘柄名称'];
+      if(nameIdx==null) continue;
+      const name = String(r[nameIdx]||'').trim();
+      if(!name) continue;
+      const quantity = numAt(r, '保有株数');
+      if(quantity==null || quantity<=0) continue;
+      out.push({
+        broker, accountType, stockName:name, quantity, unit:'株',
+        acquisitionPrice: numAt(r,'取得単価'), currency:'JPY', priceIsPerTenThousand:false,
+        currentPrice: numAt(r,'現在値'), distributionType:null, assetType:'stock-jp'
+      });
+    } else if(mode === 'fund'){
+      const nameIdx = colMap['ファンド名'];
+      if(nameIdx==null) continue;
+      const name = String(r[nameIdx]||'').trim();
+      if(!name) continue;
+      const qtyIdx = colMap['保有口数'];
+      if(qtyIdx==null) continue;
+      const qtyRaw = String(r[qtyIdx]||'').replace(/[",]/g,'').replace(/口$/,'').trim();
+      const quantity = parseFloat(qtyRaw);
+      if(!isFinite(quantity) || quantity<=0) continue;
+      const distIdx = colMap['分配金受取方法'];
+      const distRaw = distIdx!=null ? String(r[distIdx]||'').trim() : '';
+      const distributionType = distRaw.includes('再投資') ? '再投資型' : (distRaw ? '受取型' : null);
+      out.push({
+        broker, accountType, stockName:name, quantity, unit:'口',
+        acquisitionPrice: numAt(r,'取得単価'), currency:'JPY', priceIsPerTenThousand:true,
+        currentPrice: numAt(r,'基準価額'), distributionType, assetType:'fund'
+      });
+    }
+  }
+  return out;
+}
+
+function detectAssetBalanceFormat(text){
+  const firstLine = (text.split(/\r?\n/)[0] || '');
+  if(text.includes('保有証券一覧')) return 'sbi';
+  if(firstLine.includes('投資信託種別')) return 'fund';
+  if(text.includes('■') && (text.includes('銘柄コード') || text.includes('ティッカー'))) return 'stock';
+  return null;
+}
+
 /* ============ Generic import ============ */
 const brokerNames = { sbi:'SBI証券', rakuten:'楽天証券', nikko:'日興フロッギー', monex:'マネックス証券', moomoo:'moomoo証券', mufg:'三菱UFJ eスマート証券', other:'その他' };
 
@@ -1457,6 +1633,82 @@ function extractLatestQuantities(rows){
 
 // CSVから読み取れた最新数量と、登録済みの保有銘柄を突き合わせる。
 // 減少（一部売却の可能性）は取得単価に影響しないため自動反映、増加（買い増しの可能性）は取得単価の見直しが必要なため通知のみに留める。
+/* ============ 資産評価（保有残高）CSVの取り込み ============ */
+// 数量・平均取得単価・現在値・評価損益をまとめて保有銘柄へ反映する。
+// 配当CSVと違い「今まさにの残高」そのものなので、確認を挟まず直接上書き・新規登録する。
+async function importAssetBalanceRows(rows){
+  let updated = 0, created = 0;
+  const today = new Date().toISOString().slice(0,10);
+  const seenKeys = new Set(); // このファイルに登場した「証券会社|口座区分|商品種別|銘柄名」
+  const coveredScopes = new Set(); // このファイルがカバーする「証券会社|口座区分|商品種別」の組み合わせ
+  for(const row of rows){
+    const stockName = canonName(row.stockName);
+    const scope = row.broker+'|'+row.accountType+'|'+row.assetType;
+    coveredScopes.add(scope);
+    seenKeys.add(scope+'|'+stockName);
+    const existing = allHoldings.find(h=>h.stockName===stockName && h.broker===row.broker && (h.accountType||'特定口座')===row.accountType && (h.assetType||'stock')===row.assetType);
+    const common = {
+      quantity: row.quantity, unit: row.unit, acquisitionPrice: row.acquisitionPrice, currency: row.currency,
+      priceIsPerTenThousand: row.priceIsPerTenThousand, currentPrice: row.currentPrice,
+      valuationDate: today, assetType: row.assetType
+    };
+    if(row.distributionType) common.distributionType = row.distributionType;
+    if(existing){
+      // includeInYieldは本人が個別に変更している可能性があるため、再取り込みで上書きしない
+      await dbHoldingsPut({ ...existing, ...common });
+      updated++;
+    } else {
+      await dbHoldingsAdd({
+        broker: row.broker, accountType: row.accountType, stockName,
+        memo:'', hasBenefit:false, benefitNote:'', benefitPhoto:null, distributionType:null,
+        // 新規登録時のみ、再投資型ファンドはデフォルトで利回り計算から除外した状態で作成する（後から個別に変更可能）
+        includeInYield: row.distributionType !== '再投資型',
+        ...common
+      });
+      created++;
+    }
+  }
+  // このファイルがカバーする（証券会社・口座区分・商品種別）について、以前は資産評価CSVで登録されていたのに
+  // 今回登場しなかった銘柄は「売却済み」とみなし、記録は残したまま数量のみ0にする（メモ・優待情報は保持される）
+  const staleHoldings = allHoldings.filter(h=>{
+    if(!h.valuationDate) return false; // 手入力オンリーの銘柄は対象外（このCSVで管理していたものだけを対象にする）
+    const scope = h.broker+'|'+(h.accountType||'特定口座')+'|'+(h.assetType||'stock');
+    if(!coveredScopes.has(scope)) return false;
+    const key = scope+'|'+h.stockName;
+    return !seenKeys.has(key) && h.quantity > 0;
+  });
+  const soldOutNames = [];
+  for(const h of staleHoldings){
+    await dbHoldingsPut({ ...h, quantity:0, currentPrice:null, valuationDate: today });
+    soldOutNames.push(h.stockName);
+  }
+  allHoldings = await dbHoldingsGetAll();
+  return { updated, created, soldOutNames };
+}
+
+async function handleAssetBalanceFile(file){
+  const status = document.getElementById('assetImportStatus');
+  status.innerHTML = '<span class="warn">読み込み中…</span>';
+  try{
+    const buf = await file.arrayBuffer();
+    const text = decodeFileBuffer(buf, 'rakuten');
+    const format = detectAssetBalanceFormat(text);
+    let rows = [];
+    if(format === 'fund') rows = parseAssetBalanceFunds(text, '楽天証券');
+    else if(format === 'stock') rows = parseAssetBalanceStocks(text, '楽天証券');
+    else if(format === 'sbi') rows = parseAssetBalanceSbi(text, 'SBI証券');
+    else { status.innerHTML = '<span style="color:var(--danger)">認識できない形式のファイルです。楽天証券・SBI証券の資産残高CSVに対応しています。</span>'; return; }
+    if(rows.length === 0){ status.innerHTML = '<span class="warn">保有データが見つかりませんでした。</span>'; return; }
+    const { updated, created, soldOutNames } = await importAssetBalanceRows(rows);
+    status.innerHTML = `<span class="ok">${rows.length}銘柄を反映しました（更新${updated}件・新規登録${created}件）。取得単価・現在値・評価損益を自動で反映しています。</span>` +
+      (soldOutNames.length>0 ? `<br><span class="warn">📤 ${soldOutNames.length}件、このファイルに含まれなくなった銘柄を売却済み（数量0）として記録しました：${soldOutNames.join('、')}</span>` : '');
+    await refreshHoldings();
+    await refreshAll();
+  }catch(err){
+    status.innerHTML = `<span style="color:var(--danger)">取り込みに失敗しました：${err.message}</span>`;
+  }
+}
+
 async function processQuantityUpdates(rows){
   const latest = extractLatestQuantities(rows);
   if(latest.length === 0) return { autoUpdated:0, flagged:0, newFound:0 };
@@ -1823,10 +2075,10 @@ function renderGrowthRings(entries){
     const val = byYear.get(y);
     const r = 26 + (Math.sqrt(val/max) * 78);
     const t = years.length<=1 ? 1 : i/(years.length-1);
-    const color = mixColor('#2F5C42','#E4C55E', t);
-    svgContent += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="2.2" opacity="${0.35+0.5*t}"/>`;
+    const color = portfolioModeOn ? mixColor('#2F5C42','#E4C55E', t) : mixColor('#3A4A44','#7C8A84', t);
+    svgContent += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="2.2" opacity="${(0.35+0.5*t) * (portfolioModeOn?1:0.6)}"/>`;
   });
-  svgContent += `<circle cx="${cx}" cy="${cy}" r="6" fill="#E4C55E"/>`;
+  svgContent += `<circle cx="${cx}" cy="${cy}" r="6" fill="${portfolioModeOn ? '#E4C55E' : '#7C8A84'}"/>`;
   svg.innerHTML = svgContent;
 }
 
@@ -1994,7 +2246,7 @@ let lastStockTableRows = [];
 let stockSearchQuery = '';
 let stockShowUnregisteredOnly = false;
 // 銘柄別ランキングの表示列設定（証券会社・口座はモバイルで狭く感じるためデフォルト非表示）
-let stockTableColumns = { broker:false, account:false, quantity:true, cost:true, yield:true };
+let stockTableColumns = { broker:false, account:false, quantity:true, cost:true, yield:true, pl:true };
 function applyStockColumnButtons(){
   document.querySelectorAll('.col-toggle-btn').forEach(btn=>{
     btn.classList.toggle('active', !!stockTableColumns[btn.dataset.col]);
@@ -2009,70 +2261,109 @@ function renderStockTable(entries){
     cur.total += e.amount; cur.count += 1;
     map.set(e.stockName, cur);
   }
+  // 配当実績が1件もない保有銘柄（再投資型ファンドなど）も、行として表示・編集できるようにする
+  allHoldings.forEach(h=>{
+    if(!map.has(h.stockName)){ map.set(h.stockName, { total:0, count:0 }); }
+  });
   lastStockTableRows = [...map.entries()].sort((a,b)=>b[1].total-a[1].total);
   renderStockTableRows();
 }
+
+let stockSortColumn = 'total';
+let stockSortDir = 'desc';
 
 function renderStockTableRows(){
   const allRows = lastStockTableRows;
   const wrap = document.getElementById('stockTableWrap');
   const countLabel = document.getElementById('stockFilterCount');
-  document.getElementById('stockTableTitle').textContent = `銘柄別ランキング（全${allRows.length}銘柄）`;
-  if(allRows.length===0){ wrap.innerHTML = '<p class="empty-note">まだデータがありません</p>'; countLabel.textContent=''; return; }
+  if(allRows.length===0){ wrap.innerHTML = '<p class="empty-note">まだデータがありません</p>'; document.getElementById('stockTableTitle').textContent = '銘柄別ランキング'; countLabel.textContent=''; return; }
 
   let rows = allRows;
   const q = stockSearchQuery.trim().toLowerCase();
   if(q){ rows = rows.filter(([name])=>name.toLowerCase().includes(q)); }
   if(stockShowUnregisteredOnly){ rows = rows.filter(([name])=> allHoldings.filter(h=>h.stockName===name).length===0); }
   if(activeYieldStockSet){ rows = rows.filter(([name])=>activeYieldStockSet.has(name)); }
-  countLabel.textContent = (q || stockShowUnregisteredOnly || activeYieldStockSet) ? `表示中：${rows.length}件` : '';
+
+  document.getElementById('stockTableTitle').textContent = rows.length === allRows.length
+    ? `銘柄別ランキング（全${allRows.length}銘柄）`
+    : `銘柄別ランキング（${rows.length}／${allRows.length}銘柄）`;
+  countLabel.textContent = '';
 
   if(rows.length===0){ wrap.innerHTML = '<p class="empty-note">条件に合う銘柄が見つかりませんでした</p>'; return; }
 
+  // ソート・列表示のため、まず各行の数値データをすべて計算する
   const cols = stockTableColumns;
-  const headerHtml = '<th>銘柄名</th><th class="num">回数</th><th class="num">合計</th>' +
-    (cols.broker ? '<th>証券会社</th>' : '') +
-    (cols.account ? '<th>口座</th>' : '') +
-    (cols.quantity ? '<th class="num">数量</th>' : '') +
-    (cols.cost ? '<th class="num">取得額</th>' : '') +
-    (cols.yield ? '<th class="num">利回り</th>' : '');
+  const data = rows.map(([name,v])=>{
+    const holdingsForName = allHoldings.filter(h=>h.stockName===name);
+    const totalQty = holdingsForName.reduce((s,h)=>s+h.quantity,0);
+    const brokerSet = [...new Set(holdingsForName.map(h=>h.broker))];
+    const accountSet = [...new Set(holdingsForName.map(h=>h.accountType||'特定口座'))];
+    const totalCost = holdingsForName.reduce((s,h)=>s+holdingCostJPY(h),0);
+    let yieldPct = null;
+    if(totalCost > 0 && totalQty > 0){
+      const perUnit = dividendPerUnitForStock(name);
+      yieldPct = perUnit / (totalCost/totalQty) * 100;
+    }
+    const plHoldings = holdingsForName.filter(h=>h.currentPrice != null && h.acquisitionPrice);
+    const plSum = plHoldings.length ? plHoldings.reduce((s,h)=>s+profitLossJPY(h),0) : null;
+    const memoHolding = holdingsForName.find(h=>h.memo);
+    const benefitHolding = holdingsForName.find(h=>h.hasBenefit);
+    return {
+      name, count:v.count, total:v.total, holdingsForName, totalQty, unit: holdingsForName[0]?.unit || '株',
+      broker: brokerSet.length ? (brokerSet.length===1 ? brokerSet[0] : `複数(${brokerSet.length})`) : null,
+      account: accountSet.length ? (accountSet.length===1 ? accountSet[0] : `複数(${accountSet.length})`) : null,
+      cost: totalCost>0 ? totalCost : null, yieldPct, pl: plSum,
+      memoHolding, benefitHolding
+    };
+  });
+
+  const sortKey = stockSortColumn, dir = stockSortDir === 'asc' ? 1 : -1;
+  data.sort((a,b)=>{
+    let av = a[sortKey], bv = b[sortKey];
+    if(sortKey==='totalQty'){ av = a.holdingsForName.length ? a.totalQty : null; bv = b.holdingsForName.length ? b.totalQty : null; }
+    const aNull = av===null || av===undefined, bNull = bv===null || bv===undefined;
+    if(aNull && bNull) return 0;
+    if(aNull) return 1; // 値なしは常に末尾へ
+    if(bNull) return -1;
+    if(typeof av === 'string') return av.localeCompare(bv,'ja') * dir;
+    return (av-bv) * dir;
+  });
+
+  const colDefs = [
+    { key:'name', label:'銘柄名', show:true },
+    { key:'count', label:'回数', show:true, num:true },
+    { key:'total', label:'合計', show:true, num:true },
+    { key:'broker', label:'証券会社', show:cols.broker },
+    { key:'account', label:'口座', show:cols.account },
+    { key:'totalQty', label:'数量', show:cols.quantity, num:true },
+    { key:'cost', label:'取得額', show:cols.cost, num:true },
+    { key:'yieldPct', label:'利回り', show:cols.yield, num:true },
+    { key:'pl', label:'評価損益', show:cols.pl, num:true },
+  ];
+  const headerHtml = colDefs.filter(c=>c.show).map(c=>{
+    const arrow = stockSortColumn===c.key ? (stockSortDir==='asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="${c.num?'num ':''}sortable-th" data-sort-key="${c.key}">${c.label}${arrow}</th>`;
+  }).join('');
 
   wrap.innerHTML = `<div class="scroll-table"><table class="wide"><thead><tr>${headerHtml}</tr></thead><tbody>` +
-    rows.map(([name,v])=>{
-      const holdingsForName = allHoldings.filter(h=>h.stockName===name);
-      const totalQty = holdingsForName.reduce((s,h)=>s+h.quantity,0);
-      let qtyHtml = '<span style="color:var(--text-dim);">未登録</span>';
-      let yieldHtml = '<span style="color:var(--text-dim);">-</span>';
-      let costHtml = '<span style="color:var(--text-dim);">-</span>';
-      let brokerHtml = '<span style="color:var(--text-dim);">-</span>';
-      let accountHtml = '<span style="color:var(--text-dim);">-</span>';
-      if(holdingsForName.length){
-        const unit = holdingsForName[0].unit || '株';
-        qtyHtml = `${totalQty.toLocaleString('ja-JP')}${unit}`;
-        const brokerSet = [...new Set(holdingsForName.map(h=>h.broker))];
-        brokerHtml = brokerSet.length===1 ? brokerSet[0] : `複数(${brokerSet.length})`;
-        const accountSet = [...new Set(holdingsForName.map(h=>h.accountType||'特定口座'))];
-        accountHtml = accountSet.length===1 ? accountSet[0] : `複数(${accountSet.length})`;
-        const totalCost = holdingsForName.reduce((s,h)=>s+holdingCostJPY(h),0);
-        if(totalCost > 0){
-          costHtml = yen(totalCost);
-          const perUnit = dividendPerUnitForStock(name);
-          const avgCost = totalCost/totalQty;
-          const y = perUnit / avgCost * 100;
-          yieldHtml = `<span style="color:var(--gold-bright);font-weight:700;">${y.toFixed(2)}%</span>`;
-        }
-      }
-      const memoHolding = holdingsForName.find(h=>h.memo);
-      const memoIcon = memoHolding ? ` <span title="${memoHolding.memo.replace(/"/g,'&quot;')}" style="cursor:help;">📝</span>` : '';
-      const benefitHolding = holdingsForName.find(h=>h.hasBenefit);
-      const benefitIcon = benefitHolding ? ` <span title="株主優待あり${benefitHolding.benefitNote?'：'+benefitHolding.benefitNote.replace(/"/g,'&quot;'):''}" style="cursor:help;">🎁</span>` : '';
-      const rowHtml = `<td>${name}${memoIcon}${benefitIcon}</td><td class="num">${v.count}</td><td class="num">${yen(v.total)}</td>` +
+    data.map(d=>{
+      const memoIcon = d.memoHolding ? ` <span title="${d.memoHolding.memo.replace(/"/g,'&quot;')}" style="cursor:help;">📝</span>` : '';
+      const benefitIcon = d.benefitHolding ? ` <span title="株主優待あり${d.benefitHolding.benefitNote?'：'+d.benefitHolding.benefitNote.replace(/"/g,'&quot;'):''}" style="cursor:help;">🎁</span>` : '';
+      const qtyHtml = !d.holdingsForName.length ? '<span style="color:var(--text-dim);">未登録</span>'
+        : (d.totalQty > 0 ? `${d.totalQty.toLocaleString('ja-JP')}${d.unit}` : '<span style="color:var(--text-dim);">売却済み</span>');
+      const costHtml = d.cost!=null ? yen(d.cost) : '<span style="color:var(--text-dim);">-</span>';
+      const yieldHtml = d.yieldPct!=null ? `<span style="color:var(--gold-bright);font-weight:700;">${d.yieldPct.toFixed(2)}%</span>` : '<span style="color:var(--text-dim);">-</span>';
+      const plHtml = d.pl!=null ? `<span style="color:${d.pl>=0?'var(--green)':'var(--danger)'};font-weight:700;">${d.pl>=0?'+':''}${yen(d.pl)}</span>` : '<span style="color:var(--text-dim);">-</span>';
+      const brokerHtml = d.broker || '<span style="color:var(--text-dim);">-</span>';
+      const accountHtml = d.account || '<span style="color:var(--text-dim);">-</span>';
+      const rowHtml = `<td>${d.name}${memoIcon}${benefitIcon}</td><td class="num">${d.count}</td><td class="num">${yen(d.total)}</td>` +
         (cols.broker ? `<td>${brokerHtml}</td>` : '') +
         (cols.account ? `<td>${accountHtml}</td>` : '') +
         (cols.quantity ? `<td class="num">${qtyHtml}</td>` : '') +
         (cols.cost ? `<td class="num">${costHtml}</td>` : '') +
-        (cols.yield ? `<td class="num">${yieldHtml}</td>` : '');
-      return `<tr class="clickable-row" data-stock="${name.replace(/"/g,'&quot;')}">${rowHtml}</tr>`;
+        (cols.yield ? `<td class="num">${yieldHtml}</td>` : '') +
+        (cols.pl ? `<td class="num">${plHtml}</td>` : '');
+      return `<tr class="clickable-row" data-stock="${d.name.replace(/"/g,'&quot;')}">${rowHtml}</tr>`;
     }).join('') +
     '</tbody></table></div>';
   wrap.querySelectorAll('.clickable-row').forEach(el=>{
@@ -2080,6 +2371,14 @@ function renderStockTableRows(){
       const name = el.dataset.stock;
       const matched = allHoldings.filter(h=>h.stockName===name);
       openHoldingModal(matched.length ? matched[0] : holdingTemplateFor(name), matched);
+    });
+  });
+  wrap.querySelectorAll('.sortable-th').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.sortKey;
+      if(stockSortColumn === key){ stockSortDir = stockSortDir==='asc' ? 'desc' : 'asc'; }
+      else { stockSortColumn = key; stockSortDir = 'desc'; }
+      renderStockTableRows();
     });
   });
 }
@@ -2104,8 +2403,9 @@ function renderYearSummary(entries){
   }).sort((a,b)=>b.year-a.year);
 
   // 保有銘柄ベースの年ごとの利回り（現在の取得額を分母に固定）
-  const heldStockNames = [...new Set(allHoldings.map(h=>h.stockName))];
-  const totalCost = allHoldings.reduce((s,h)=>s+holdingCostJPY(h),0);
+  const yieldHoldings = yieldRelevantHoldings();
+  const heldStockNames = [...new Set(yieldHoldings.map(h=>h.stockName))];
+  const totalCost = yieldHoldings.reduce((s,h)=>s+holdingCostJPY(h),0);
   const yieldForYear = (y)=>{
     if(totalCost<=0 || heldStockNames.length===0) return null;
     const sum = entries.filter(e=>heldStockNames.includes(e.stockName) && new Date(e.date).getFullYear()===y).reduce((s,e)=>s+e.amount,0);
@@ -2440,11 +2740,20 @@ function loadHoldingIntoForm(holding){
   document.getElementById('holdingBroker').value = holding ? holding.broker : brokerOptions[0];
   document.getElementById('holdingAccount').value = holding ? (holding.accountType||'特定口座') : '特定口座';
   document.getElementById('holdingName').value = holding ? holding.stockName : '';
-  document.getElementById('holdingQuantity').value = holding && holding.quantity ? holding.quantity : '';
+  document.getElementById('holdingQuantity').value = (holding && holding.quantity != null) ? holding.quantity : '';
   document.getElementById('holdingUnit').value = holding ? (holding.unit||'株') : '株';
   document.getElementById('holdingPrice').value = holding && holding.acquisitionPrice ? holding.acquisitionPrice : '';
+  document.getElementById('holdingCurrentPrice').value = (holding && holding.currentPrice != null) ? holding.currentPrice : '';
   document.getElementById('holdingCurrency').value = holding ? (holding.currency||'JPY') : 'JPY';
   document.getElementById('holdingMemo').value = holding && holding.memo ? holding.memo : '';
+  document.getElementById('holdingIncludeInYield').checked = holding ? (holding.includeInYield !== false) : true;
+  const distRow = document.getElementById('distributionTypeRow');
+  if(holding && holding.distributionType){
+    distRow.style.display = '';
+    document.getElementById('distributionTypeDisplay').textContent = holding.distributionType;
+  } else {
+    distRow.style.display = 'none';
+  }
   document.getElementById('holdingHasBenefit').checked = !!(holding && holding.hasBenefit);
   document.getElementById('holdingBenefitNote').value = holding && holding.benefitNote ? holding.benefitNote : '';
   document.getElementById('holdingBenefitPhoto').value = '';
@@ -2494,15 +2803,18 @@ async function saveHolding(){
   const quantity = parseFloat(document.getElementById('holdingQuantity').value);
   const unit = document.getElementById('holdingUnit').value;
   const acquisitionPrice = parseFloat(document.getElementById('holdingPrice').value) || 0;
+  const currentPriceRaw = document.getElementById('holdingCurrentPrice').value;
+  const currentPrice = currentPriceRaw === '' ? null : parseFloat(currentPriceRaw);
   const currency = document.getElementById('holdingCurrency').value;
   const priceIsPerTenThousand = unit === '口' && document.getElementById('holdingPerTenThousand').checked;
   const memo = document.getElementById('holdingMemo').value.trim();
+  const includeInYield = document.getElementById('holdingIncludeInYield').checked;
   const hasBenefit = document.getElementById('holdingHasBenefit').checked;
   const benefitNote = hasBenefit ? document.getElementById('holdingBenefitNote').value.trim() : '';
   const benefitPhoto = hasBenefit ? pendingBenefitPhoto : null;
   if(!stockName){ document.getElementById('holdingStatus').innerHTML = '<span style="color:var(--danger)">銘柄名を入力してください。</span>'; return; }
-  if(!quantity || quantity <= 0){ document.getElementById('holdingStatus').innerHTML = '<span style="color:var(--danger)">数量は1以上の数値で入力してください。</span>'; return; }
-  const rec = { broker, accountType, stockName, quantity, unit, acquisitionPrice, currency, priceIsPerTenThousand, memo, hasBenefit, benefitNote, benefitPhoto };
+  if(isNaN(quantity) || quantity < 0){ document.getElementById('holdingStatus').innerHTML = '<span style="color:var(--danger)">数量は0以上の数値で入力してください（0＝売却済みとして記録されます）。</span>'; return; }
+  const rec = { broker, accountType, stockName, quantity, unit, acquisitionPrice, currentPrice, currency, priceIsPerTenThousand, memo, includeInYield, hasBenefit, benefitNote, benefitPhoto };
   if(editingHoldingId){
     rec.id = editingHoldingId;
     await dbHoldingsPut(rec);
@@ -2690,6 +3002,27 @@ function unitPriceJPY(h){
   if(h.currency === 'USD') price = price * usdToJpyRate;
   return price;
 }
+// 評価損益（保有時点の通貨）を円換算する。米ドル建てファンド・株式もJPY基準で合算できるようにする
+// 現在値（1株/1口あたり、1万口あたりファンドは自動換算）を円換算した単価にする
+function currentUnitPriceJPY(h){
+  if(h.currentPrice == null) return null;
+  let price = h.currentPrice;
+  if(h.unit === '口' && h.priceIsPerTenThousand) price = price / 10000;
+  if(h.currency === 'USD') price = price * usdToJpyRate;
+  return price;
+}
+// 評価額（円）＝現在値×数量。現在値が未入力の銘柄はnullを返す
+function evalValueJPY(h){
+  const cur = currentUnitPriceJPY(h);
+  if(cur == null) return null;
+  return cur * h.quantity;
+}
+// 評価損益（円）＝評価額－取得額。取得単価・現在値のどちらか片方でも欠けていればnull
+function profitLossJPY(h){
+  const evalV = evalValueJPY(h);
+  if(evalV == null || !h.acquisitionPrice) return null;
+  return evalV - holdingCostJPY(h);
+}
 function holdingCostJPY(h){
   return h.quantity * unitPriceJPY(h);
 }
@@ -2744,10 +3077,12 @@ function renderYieldDistribution(){
 
 /* ============ 配当再投資シミュレーション ============ */
 function computeSimDefaults(){
-  const totalCost = allHoldings.reduce((s,h)=>s+holdingCostJPY(h),0);
+  // 「配当ポートフォリオの集計に含める」がOFFの銘柄（成長目的の保有など）は取得額・利回り双方から除外する
+  const yieldHoldings = yieldRelevantHoldings();
+  const totalCost = yieldHoldings.reduce((s,h)=>s+holdingCostJPY(h),0);
   let totalTTM = 0;
   const seen = new Set();
-  allHoldings.forEach(h=>{
+  yieldHoldings.forEach(h=>{
     if(seen.has(h.stockName)) return;
     seen.add(h.stockName);
     totalTTM += computeTTMDividendJPY(h.stockName);
@@ -2759,10 +3094,32 @@ function computeSimDefaults(){
 function renderHoldingsHeroStats(){
   const costEl = document.getElementById('statCost');
   const yieldEl = document.getElementById('statYield');
+  const evalEl = document.getElementById('statEvalValue');
+  const plEl = document.getElementById('statProfitLoss');
   if(!costEl || !yieldEl) return;
   const { totalCost, yieldPct } = computeSimDefaults();
   costEl.textContent = totalCost>0 ? yen(totalCost) : '未登録';
   yieldEl.textContent = totalCost>0 ? yieldPct.toFixed(2)+'%' : '-';
+
+  const withEval = yieldRelevantHoldings().filter(h=>h.currentPrice != null);
+  if(evalEl){
+    if(withEval.length){
+      const evalSum = withEval.reduce((s,h)=> s + evalValueJPY(h), 0);
+      evalEl.textContent = yen(evalSum);
+    } else {
+      evalEl.textContent = '-';
+    }
+  }
+  if(plEl){
+    const withPl = yieldRelevantHoldings().filter(h=>h.currentPrice != null && h.acquisitionPrice);
+    if(withPl.length){
+      const plSum = withPl.reduce((s,h)=>s+profitLossJPY(h),0);
+      const up = plSum >= 0;
+      plEl.innerHTML = `<span style="color:${up?'var(--green)':'var(--danger)'};">${up?'+':''}${yen(plSum)}</span>`;
+    } else {
+      plEl.textContent = '-';
+    }
+  }
 }
 
 function initSimDefaults(){
@@ -3061,6 +3418,21 @@ document.getElementById('mapCancel').addEventListener('click', closeMappingModal
 document.getElementById('mapConfirm').addEventListener('click', confirmMapping);
 
 document.getElementById('addHoldingBtn').addEventListener('click', ()=>openHoldingModal(null));
+document.getElementById('assetImportBtn').addEventListener('click', ()=>{
+  document.getElementById('assetImportFileInput').click();
+});
+document.getElementById('assetImportFileInput').addEventListener('change', async (evt)=>{
+  const file = evt.target.files[0];
+  evt.target.value = '';
+  if(file) await handleAssetBalanceFile(file);
+});
+document.getElementById('growthRings').addEventListener('click', async ()=>{
+  portfolioModeOn = !portfolioModeOn;
+  document.getElementById('portfolioModeHint').innerHTML = `🎯 右上の年輪をタップすると「配当ポートフォリオ集計モード」を切り替えられます。現在：<strong style="color:${portfolioModeOn?'var(--gold-bright)':'var(--text-dim)'};">${portfolioModeOn?'ON（成長目的の銘柄を除外中）':'OFF（全銘柄を含めて集計中）'}</strong>`;
+  await dbSetSetting('portfolioModeOn', portfolioModeOn);
+  renderHoldingsHeroStats();
+  applyFilterAndRender();
+});
 document.getElementById('holdingCancel').addEventListener('click', closeHoldingModal);
 document.getElementById('holdingSave').addEventListener('click', saveHolding);
 document.getElementById('holdingDelete').addEventListener('click', deleteCurrentHolding);
@@ -3076,7 +3448,7 @@ document.getElementById('aliasAddBtn').addEventListener('click', addAlias);
 document.addEventListener('click', (evt)=>{
   const btn = evt.target.closest('.info-btn');
   if(!btn) return;
-  const anchor = btn.closest('.chart-head') || btn.closest('h2');
+  const anchor = btn.closest('.chart-head') || btn.closest('h2') || btn.closest('.map-row');
   if(!anchor) return;
   let sib = anchor.nextElementSibling;
   while(sib && sib.classList && sib.classList.contains('hint')){
@@ -3218,6 +3590,11 @@ window.addEventListener('resize', ()=>{
   const savedAnnualGoal = await dbGetSetting('annualGoal');
   const savedAliases = await dbGetSetting('stockAliases');
   const savedStockColumns = await dbGetSetting('stockTableColumns');
+  const savedPortfolioMode = await dbGetSetting('portfolioModeOn');
+  if(typeof savedPortfolioMode === 'boolean'){
+    portfolioModeOn = savedPortfolioMode;
+    document.getElementById('portfolioModeHint').innerHTML = `🎯 右上の年輪をタップすると「配当ポートフォリオ集計モード」を切り替えられます。現在：<strong style="color:${portfolioModeOn?'var(--gold-bright)':'var(--text-dim)'};">${portfolioModeOn?'ON（成長目的の銘柄を除外中）':'OFF（全銘柄を含めて集計中）'}</strong>`;
+  }
   if(typeof savedRate === 'number' && savedRate > 0) usdToJpyRate = savedRate;
   if(typeof savedToggle === 'boolean') includeUsdConverted = savedToggle;
   if(typeof savedMonthlyGoal === 'number') monthlyGoal = savedMonthlyGoal;
