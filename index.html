@@ -82,8 +82,8 @@
   .hero-stat:hover{border-color:var(--gold);background:var(--surface-hi);}
   .hero-stat .label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;}
   .hero-stat .value{display:block;font-size:clamp(18px,5vw,24px);font-family:var(--font-display);font-weight:800;color:var(--gold-bright);}
-  .growth-rings{position:absolute;right:-40px;top:-10px;width:220px;height:220px;opacity:.9;pointer-events:none;}
-  @media (max-width:560px){ .growth-rings{display:none;} }
+  .growth-rings{position:absolute;right:-40px;top:-10px;width:220px;height:220px;opacity:.9;pointer-events:none;z-index:0;}
+  @media (max-width:560px){ .growth-rings{width:150px;height:150px;right:-24px;top:-6px;opacity:.6;} }
 
   section{margin-top:22px;}
   .import-panel, .chart-card, .data-manage{
@@ -115,7 +115,7 @@
   table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;}
   .scroll-table table.wide{table-layout:auto;width:auto;min-width:100%;}
   .scroll-table table.wide th,.scroll-table table.wide td{white-space:nowrap;}
-  .scroll-table table.wide td:first-child{white-space:normal;min-width:140px;}
+  .scroll-table table.wide td:first-child{white-space:normal;min-width:96px;}
   th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border-soft);overflow-wrap:break-word;word-break:break-word;}
   th{color:var(--text-dim);font-weight:500;font-size:11.5px;letter-spacing:.03em;}
   td.num, th.num{text-align:right;font-variant-numeric:tabular-nums;}
@@ -1708,6 +1708,68 @@ function drawDonutChart(canvas, values, colors, highlightIdx){
   ctx.beginPath(); ctx.arc(cx,cy,rInner,0,Math.PI*2); ctx.fillStyle = '#16332B'; ctx.fill();
 }
 
+// 中央に合計額、外側に引き出し線＋名称ラベルを表示するドーナツグラフ（銘柄別・証券会社別で共用）
+// items: [{label, value, color, ref}]  ref は任意のクリック時参照用データ
+function drawLabeledDonut(canvas, items, highlightIdx, opts){
+  opts = opts || {};
+  const { ctx, w, h } = setupCanvas(canvas, opts.height || 320);
+  ctx.clearRect(0,0,w,h);
+  if(items.length===0){ drawEmptyState(ctx,w,h); return { cx:0, cy:0, rOuter:0, slices:[] }; }
+  const total = items.reduce((s,b)=>s+b.value,0) || 1;
+  const cx = w/2, cy = h/2;
+  const rOuter = Math.min(w,h) * (opts.radiusFactor || 0.30);
+  const rInner = rOuter*0.55;
+  const labelR = rOuter + (opts.labelGap || 32);
+  const hasHighlight = typeof highlightIdx === 'number' && highlightIdx >= 0;
+  let angleStart = -Math.PI/2;
+  const slices = [];
+  items.forEach((b,i)=>{
+    const angle = (b.value/total)*Math.PI*2;
+    const endAngle = angleStart+angle;
+    ctx.globalAlpha = (!hasHighlight || i===highlightIdx) ? 1 : 0.3;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,rOuter,angleStart,endAngle);
+    ctx.closePath();
+    ctx.fillStyle = b.color;
+    ctx.fill();
+    slices.push({ label:b.label, value:b.value, startAngle:angleStart, endAngle, color:b.color, ref:b.ref });
+    angleStart = endAngle;
+  });
+  ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(cx,cy,rInner,0,Math.PI*2); ctx.fillStyle = '#16332B'; ctx.fill();
+
+  ctx.fillStyle = '#EDECE3'; ctx.textAlign='center'; ctx.font='700 13px "Zen Kaku Gothic New",sans-serif';
+  ctx.fillText(yen(total), cx, cy+5);
+
+  slices.forEach(s=>{
+    const mid = (s.startAngle+s.endAngle)/2;
+    const pct = s.value/total*100;
+    if(pct >= 5){
+      const lx = cx + Math.cos(mid) * (rOuter*0.78);
+      const ly = cy + Math.sin(mid) * (rOuter*0.78);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = '700 10.5px "Zen Kaku Gothic New",sans-serif';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 3;
+      ctx.fillText(pct.toFixed(0)+'%', lx, ly+3.5);
+      ctx.shadowBlur = 0;
+    }
+    const isRight = Math.cos(mid) >= 0;
+    const p1x = cx + Math.cos(mid)*rOuter, p1y = cy + Math.sin(mid)*rOuter;
+    const p2x = cx + Math.cos(mid)*(rOuter+14), p2y = cy + Math.sin(mid)*(rOuter+14);
+    const p3x = cx + (isRight?1:-1)*labelR, p3y = p2y;
+    ctx.strokeStyle = 'rgba(237,236,227,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(p1x,p1y); ctx.lineTo(p2x,p2y); ctx.lineTo(p3x,p3y); ctx.stroke();
+    ctx.fillStyle = '#EDECE3'; ctx.font='10.5px "Zen Kaku Gothic New",sans-serif';
+    ctx.textAlign = isRight ? 'left' : 'right';
+    let name = s.label.length > 11 ? s.label.slice(0,10)+'…' : s.label;
+    ctx.fillText(name, p3x + (isRight?4:-4), p3y+3.5);
+  });
+
+  return { cx, cy, rOuter, slices };
+}
+
 /* ============ Growth rings signature (SVG) ============ */
 function mixColor(c1,c2,t){
   const a = c1.match(/\w\w/g).map(x=>parseInt(x,16));
@@ -1832,7 +1894,7 @@ function renderMonthlyChart(entries){
   const months = [...byMonth.keys()].sort();
   lastMonthlyLabels = months;
   const highlightIdx = activeMonthFilter ? months.indexOf(activeMonthFilter) : -1;
-  drawBarChart(document.getElementById('monthlyChart'), months, months.map(m=>byMonth.get(m)), highlightIdx);
+  drawBarChart(document.getElementById('monthlyChart'), months, months.map(m=>byMonth.get(m)), highlightIdx, { fullLabels:true });
 }
 
 function renderCumulativeChart(entries){
@@ -1841,7 +1903,7 @@ function renderCumulativeChart(entries){
   const months = [...byMonth.keys()].sort();
   let running = 0;
   const cum = months.map(m=>{ running += byMonth.get(m); return running; });
-  drawLineChart(document.getElementById('cumulativeChart'), months, cum);
+  drawLineChart(document.getElementById('cumulativeChart'), months, cum, { fullLabels:true });
 }
 
 // 証券会社ごとに固定の色を割り当てる（データの並び順で色が変わらないようにするため）
@@ -1869,25 +1931,8 @@ function renderBrokerChart(allEntriesFull){
   const total = values.reduce((a,b)=>a+b,0) || 1;
   const highlightIdx = activeBrokerFilter ? labels.indexOf(activeBrokerFilter) : -1;
   const canvas = document.getElementById('brokerChart');
-  drawDonutChart(canvas, values, colors, highlightIdx);
-
-  // クリック判定用に各スライスの角度範囲を記録（drawDonutChartの描画ロジックと同じ計算式）
-  if(labels.length){
-    const rect = canvas.getBoundingClientRect();
-    const w = rect.width || canvas.clientWidth || 200, h = 200;
-    const cx = w/2, cy = h/2;
-    const rOuter = Math.min(w,h)/2 - 10;
-    let angleStart = -Math.PI/2;
-    const slices = labels.map((l,i)=>{
-      const angle = (values[i]/total)*Math.PI*2;
-      const s = { label:l, value:values[i], startAngle:angleStart, endAngle:angleStart+angle };
-      angleStart += angle;
-      return s;
-    });
-    lastBrokerDonutMeta = { cx, cy, rOuter, slices };
-  } else {
-    lastBrokerDonutMeta = { cx:0, cy:0, rOuter:0, slices:[] };
-  }
+  const items = labels.map((l,i)=>({ label:l, value:values[i], color:colors[i], ref:l }));
+  lastBrokerDonutMeta = drawLabeledDonut(canvas, items, highlightIdx);
 
   const tableWrap = document.getElementById('brokerTableWrap');
   if(labels.length===0){ tableWrap.innerHTML=''; return; }
@@ -1954,7 +1999,7 @@ function renderStockTableRows(){
   const headerHtml = '<th>銘柄名</th><th class="num">回数</th><th class="num">合計</th>' +
     (cols.broker ? '<th>証券会社</th>' : '') +
     (cols.account ? '<th>口座</th>' : '') +
-    (cols.quantity ? '<th class="num">保有数量</th>' : '') +
+    (cols.quantity ? '<th class="num">数量</th>' : '') +
     (cols.cost ? '<th class="num">取得額</th>' : '') +
     (cols.yield ? '<th class="num">利回り</th>' : '');
 
@@ -2192,63 +2237,8 @@ function renderStockDonut(entries){
   const buckets = buildStockBuckets(entries, 10);
   lastStockBuckets = buckets;
   const canvas = document.getElementById('stockDonutChart');
-  const { ctx, w, h } = setupCanvas(canvas, 360);
-  ctx.clearRect(0,0,w,h);
-  if(buckets.length===0){ drawEmptyState(ctx,w,h); lastDonutMeta.slices=[]; return; }
-  const total = buckets.reduce((s,b)=>s+b.value,0) || 1;
-  const cx = w/2, cy = h/2;
-  const rOuter = Math.min(w,h)*0.24;
-  const rInner = rOuter*0.55;
-  const labelR = rOuter + 34;
-  let angleStart = -Math.PI/2;
-  const slices = [];
-  buckets.forEach((b,i)=>{
-    const angle = (b.value/total)*Math.PI*2;
-    const endAngle = angleStart+angle;
-    const color = STOCK_PALETTE[i%STOCK_PALETTE.length];
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,rOuter,angleStart,endAngle);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    slices.push({ label:b.label, value:b.value, startAngle:angleStart, endAngle, color, bucket:b });
-    angleStart = endAngle;
-  });
-  ctx.beginPath(); ctx.arc(cx,cy,rInner,0,Math.PI*2); ctx.fillStyle = '#16332B'; ctx.fill();
-
-  // 中心に合計
-  ctx.fillStyle = '#EDECE3'; ctx.textAlign='center'; ctx.font='700 13px "Zen Kaku Gothic New",sans-serif';
-  ctx.fillText(yen(total), cx, cy+5);
-
-  slices.forEach(s=>{
-    const mid = (s.startAngle+s.endAngle)/2;
-    const pct = s.value/total*100;
-    // スライス内の％ラベル（大きいスライスのみ）
-    if(pct >= 5){
-      const lx = cx + Math.cos(mid) * (rOuter*0.78);
-      const ly = cy + Math.sin(mid) * (rOuter*0.78);
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.font = '700 10.5px "Zen Kaku Gothic New",sans-serif';
-      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 3;
-      ctx.fillText(pct.toFixed(0)+'%', lx, ly+3.5);
-      ctx.shadowBlur = 0;
-    }
-    // 引き出し線とラベル
-    const isRight = Math.cos(mid) >= 0;
-    const p1x = cx + Math.cos(mid)*rOuter, p1y = cy + Math.sin(mid)*rOuter;
-    const p2x = cx + Math.cos(mid)*(rOuter+14), p2y = cy + Math.sin(mid)*(rOuter+14);
-    const p3x = cx + (isRight?1:-1)*labelR, p3y = p2y;
-    ctx.strokeStyle = 'rgba(237,236,227,0.35)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(p1x,p1y); ctx.lineTo(p2x,p2y); ctx.lineTo(p3x,p3y); ctx.stroke();
-    ctx.fillStyle = '#EDECE3'; ctx.font='10.5px "Zen Kaku Gothic New",sans-serif';
-    ctx.textAlign = isRight ? 'left' : 'right';
-    let name = s.label.length > 11 ? s.label.slice(0,10)+'…' : s.label;
-    ctx.fillText(name, p3x + (isRight?4:-4), p3y+3.5);
-  });
-
-  lastDonutMeta = { cx, cy, rOuter, slices };
+  const items = buckets.map((b,i)=>({ label:b.label, value:b.value, color:STOCK_PALETTE[i%STOCK_PALETTE.length], ref:b }));
+  lastDonutMeta = drawLabeledDonut(canvas, items, -1);
 }
 
 /* ============ Treemap (squarify algorithm) ============ */
@@ -3018,7 +3008,7 @@ document.getElementById('stockDonutChart').addEventListener('click', (evt)=>{
   let angle = Math.atan2(y,x);
   if(angle < -Math.PI/2) angle += Math.PI*2;
   const hit = slices.find(s=> angle >= s.startAngle && angle < s.endAngle);
-  if(hit) showStockDetail(hit.bucket);
+  if(hit) showStockDetail(hit.ref);
 });
 document.getElementById('brokerChart').addEventListener('click', (evt)=>{
   const { cx, cy, rOuter, slices } = lastBrokerDonutMeta;
