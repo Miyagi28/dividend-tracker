@@ -1560,8 +1560,13 @@ function drawGrid(ctx, padL, padT, chartW, chartH, max, formatter){
   }
 }
 function drawXLabels(ctx, labels, xs, h, fullLabels){
-  const step = Math.max(1, Math.ceil(labels.length/10));
+  if(labels.length===0) return;
   ctx.fillStyle='#9BAFA6'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+  // ラベル1つあたりに必要な最小幅を確保できる間引き数を、実際の横幅から逆算する（文字が重なるのを防ぐ）
+  const totalWidth = Math.max(1, xs[xs.length-1] - xs[0]);
+  const minGap = fullLabels ? 44 : 26;
+  const maxLabelCount = Math.max(1, Math.floor(totalWidth / minGap) + 1);
+  const step = Math.max(1, Math.ceil(labels.length / maxLabelCount));
   labels.forEach((label,i)=>{
     if(i % step === 0){ ctx.fillText(fullLabels ? label : label.slice(2), xs[i], h-10); }
   });
@@ -1717,9 +1722,14 @@ function drawLabeledDonut(canvas, items, highlightIdx, opts){
   if(items.length===0){ drawEmptyState(ctx,w,h); return { cx:0, cy:0, rOuter:0, slices:[] }; }
   const total = items.reduce((s,b)=>s+b.value,0) || 1;
   const cx = w/2, cy = h/2;
-  const rOuter = Math.min(w,h) * (opts.radiusFactor || 0.30);
+  const leaderLen = 14, labelGap = opts.labelGap || 10;
+  const minTextReserve = 42; // ラベル文字列のために最低限確保しておきたい横幅
+  // 円の半径は「高さ基準の希望サイズ」と「ラベル分の余白を残した横幅の上限」の小さい方に合わせ、はみ出しを防ぐ
+  const maxROuterByWidth = Math.max(22, w/2 - leaderLen - labelGap - minTextReserve);
+  const maxROuterByHeight = h/2 - 22;
+  const rOuter = Math.min(Math.min(w,h) * (opts.radiusFactor || 0.30), maxROuterByWidth, maxROuterByHeight);
   const rInner = rOuter*0.55;
-  const labelR = rOuter + (opts.labelGap || 32);
+  const labelR = rOuter + leaderLen + labelGap;
   const hasHighlight = typeof highlightIdx === 'number' && highlightIdx >= 0;
   let angleStart = -Math.PI/2;
   const slices = [];
@@ -1742,6 +1752,11 @@ function drawLabeledDonut(canvas, items, highlightIdx, opts){
   ctx.fillStyle = '#EDECE3'; ctx.textAlign='center'; ctx.font='700 13px "Zen Kaku Gothic New",sans-serif';
   ctx.fillText(yen(total), cx, cy+5);
 
+  // 各ラベルの文字幅を、実際に使える横幅（円の外側〜キャンバス端）に応じて動的に決める（はみ出し防止）
+  const availTextWidth = Math.max(16, (w/2) - labelR - 4);
+  const maxChars = Math.max(2, Math.floor(availTextWidth / 11));
+
+  // スライス内の％表示（衝突の心配がないので先に描画）
   slices.forEach(s=>{
     const mid = (s.startAngle+s.endAngle)/2;
     const pct = s.value/total*100;
@@ -1755,16 +1770,35 @@ function drawLabeledDonut(canvas, items, highlightIdx, opts){
       ctx.fillText(pct.toFixed(0)+'%', lx, ly+3.5);
       ctx.shadowBlur = 0;
     }
+  });
+
+  // 引き出し線ラベル：左右グループに分け、縦位置が近すぎる場合はずらして文字の重なりを防ぐ
+  const minLabelGapY = 13;
+  const leftLabels = [], rightLabels = [];
+  slices.forEach(s=>{
+    const mid = (s.startAngle+s.endAngle)/2;
     const isRight = Math.cos(mid) >= 0;
-    const p1x = cx + Math.cos(mid)*rOuter, p1y = cy + Math.sin(mid)*rOuter;
-    const p2x = cx + Math.cos(mid)*(rOuter+14), p2y = cy + Math.sin(mid)*(rOuter+14);
-    const p3x = cx + (isRight?1:-1)*labelR, p3y = p2y;
+    const edgeX = cx + Math.cos(mid)*rOuter, edgeY = cy + Math.sin(mid)*rOuter;
+    const bendX = cx + Math.cos(mid)*(rOuter+leaderLen), bendY = cy + Math.sin(mid)*(rOuter+leaderLen);
+    const entry = { s, isRight, edgeX, edgeY, bendX, bendY, y: bendY };
+    (isRight ? rightLabels : leftLabels).push(entry);
+  });
+  [leftLabels, rightLabels].forEach(group=>{
+    group.sort((a,b)=>a.y-b.y);
+    for(let i=1;i<group.length;i++){
+      if(group[i].y - group[i-1].y < minLabelGapY){
+        group[i].y = group[i-1].y + minLabelGapY;
+      }
+    }
+  });
+  [...leftLabels, ...rightLabels].forEach(({ s, isRight, edgeX, edgeY, bendX, bendY, y })=>{
+    const labelX = cx + (isRight?1:-1)*labelR;
     ctx.strokeStyle = 'rgba(237,236,227,0.35)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(p1x,p1y); ctx.lineTo(p2x,p2y); ctx.lineTo(p3x,p3y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(edgeX,edgeY); ctx.lineTo(bendX,bendY); ctx.lineTo(labelX,y); ctx.stroke();
     ctx.fillStyle = '#EDECE3'; ctx.font='10.5px "Zen Kaku Gothic New",sans-serif';
     ctx.textAlign = isRight ? 'left' : 'right';
-    let name = s.label.length > 11 ? s.label.slice(0,10)+'…' : s.label;
-    ctx.fillText(name, p3x + (isRight?4:-4), p3y+3.5);
+    const name = s.label.length > maxChars ? s.label.slice(0,Math.max(1,maxChars-1))+'…' : s.label;
+    ctx.fillText(name, labelX + (isRight?4:-4), y+3.5);
   });
 
   return { cx, cy, rOuter, slices };
