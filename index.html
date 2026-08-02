@@ -71,7 +71,7 @@
   .dash-tile:hover{border-color:var(--gold);background:var(--surface-hi);}
   .dash-tile .dash-icon{font-size:16px;margin-bottom:4px;display:block;}
   .dash-tile .dash-label{font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;}
-  .dash-tile .dash-value{font-size:18px;font-weight:800;font-family:var(--font-display);color:var(--gold-bright);display:block;line-height:1.25;}
+  .dash-tile .dash-value{font-size:18px;font-weight:800;font-family:var(--font-display);color:var(--gold-bright);display:block;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .dash-tile .dash-sub{font-size:11px;margin-top:4px;display:block;color:var(--text-dim);}
   .dash-tile .dash-sub.up{color:var(--green);font-weight:700;}
   .dash-tile .dash-sub.down{color:var(--danger);font-weight:700;}
@@ -242,7 +242,8 @@
     <button id="notifBellBtn" class="notif-bell" type="button" aria-label="お知らせ">🔔<span id="notifBadge" class="notif-badge" style="display:none;">0</span></button>
     <p class="eyebrow">Dividend Harvest</p>
     <h1>配当の実り</h1>
-    <p class="hint" id="portfolioModeHint" style="margin:2px 0 12px;">🎯 右上の年輪をタップすると「配当ポートフォリオ集計モード」を切り替えられます。ONの間は、成長目的として個別設定した銘柄（VTIなど）をトップの集計から除外します。</p>
+    <p class="hint info-anchor" id="portfolioModeStatus" style="margin:2px 0 4px;">🎯 集計モード：<strong id="portfolioModeStatusValue" style="color:var(--gold-bright);">ON</strong><button class="info-btn" type="button" aria-label="説明">ⓘ</button></p>
+    <p class="hint hint-collapsible" id="portfolioModeHint" style="margin:0 0 12px;">右上の年輪をタップすると切り替えられます。ONの間は、成長目的として個別設定した銘柄（VTIなど）をトップの集計から除外します。</p>
     <div class="hero-grid">
       <button class="hero-stat" type="button" data-jump="cardYearSummary"><span class="label">累計受取配当金</span><span class="value" id="statTotal">¥0</span></button>
       <button class="hero-stat" type="button" data-jump="cardYearSummary"><span class="label">今年の受取</span><span class="value" id="statYear">¥0</span></button>
@@ -736,12 +737,14 @@ async function dbClear(){ return storageMode==='memory' ? memClear() : idbClear(
 async function dbClearAllData(){
   if(storageMode==='memory'){
     memoryStore = []; memoryHoldings = []; memoryNotifs = []; memorySettings = {};
-  } else {
-    await idbClearStore(STORE);
-    await idbClearStore(HOLDINGS_STORE);
-    await idbClearStore(NOTIF_STORE);
-    await idbClearStore(SETTINGS_STORE);
+    return { errors: [] };
   }
+  const errors = [];
+  for(const s of [STORE, HOLDINGS_STORE, NOTIF_STORE, SETTINGS_STORE]){
+    try{ await idbClearStore(s); }
+    catch(err){ errors.push(`${s}: ${err.message||err}`); }
+  }
+  return { errors };
 }
 async function dbGetSetting(key){
   try{ return storageMode==='memory' ? await memGetSetting(key) : await idbGetSetting(key); }
@@ -2148,7 +2151,7 @@ function drawDonutChart(canvas, values, colors, highlightIdx){
 // items: [{label, value, color, ref}]  ref は任意のクリック時参照用データ
 function drawLabeledDonut(canvas, items, highlightIdx, opts){
   opts = opts || {};
-  const { ctx, w, h } = setupCanvas(canvas, opts.height || 320);
+  const { ctx, w, h } = setupCanvas(canvas, opts.height || 360);
   ctx.clearRect(0,0,w,h);
   if(items.length===0){ drawEmptyState(ctx,w,h); return { cx:0, cy:0, rOuter:0, slices:[] }; }
   const total = items.reduce((s,b)=>s+b.value,0) || 1;
@@ -2220,6 +2223,18 @@ function drawLabeledDonut(canvas, items, highlightIdx, opts){
       if(group[i].y - group[i-1].y < minLabelGapY){
         group[i].y = group[i-1].y + minLabelGapY;
       }
+    }
+    // 押し出しによってキャンバスの上下端をはみ出す場合は、全体を範囲内に収める
+    if(group.length){
+      const topPad = 12, bottomPad = h - 12;
+      const overflowBottom = group[group.length-1].y - bottomPad;
+      if(overflowBottom > 0){ group.forEach(g=>{ g.y -= overflowBottom; }); }
+      if(group[0].y < topPad){
+        const shiftUp = topPad - group[0].y;
+        group.forEach(g=>{ g.y += shiftUp; });
+      }
+      // 項目数が極端に多く、全体の間隔がキャンバス高さに収まりきらない場合の最終安全策
+      group.forEach(g=>{ g.y = Math.max(topPad, Math.min(bottomPad, g.y)); });
     }
   });
   [...leftLabels, ...rightLabels].forEach(({ s, isRight, edgeX, edgeY, bendX, bendY, y })=>{
@@ -2661,7 +2676,7 @@ function renderDashboard(){
 
   const tiles = [
     { icon:'🎯', label:'目標達成率', value:goalValue, sub:goalSub, target:'goalSection' },
-    { icon:'🌟', label:'今年の貢献1位銘柄', value: topStock ? topStock[0] : '-', sub: topStock ? yen(topStock[1]) : 'データなし', target:'cardStockRanking' },
+    { icon:'🌟', label:'今年の貢献1位銘柄', value: topStock ? (topStock[0].length>9 ? topStock[0].slice(0,9)+'…' : topStock[0]) : '-', sub: topStock ? yen(topStock[1]) : 'データなし', target:'cardStockRanking' },
     { icon:'🔔', label:'お知らせ', value: notifCount+'件', sub: notifCount>0 ? 'タップして確認' : '未読なし', action:'notif' },
     { icon:'📈', label:'増配・減配', value: `📈${upCount}　📉${downCount}`, sub:'直近1年 vs 前年同期', target:'cardDivGrowth' },
   ];
@@ -3716,9 +3731,14 @@ document.getElementById('assetImportFileInput').addEventListener('change', async
   evt.target.value = '';
   if(file) await handleAssetBalanceFile(file);
 });
+function updatePortfolioModeStatus(){
+  document.getElementById('portfolioModeStatusValue').textContent = portfolioModeOn ? 'ON' : 'OFF';
+  document.getElementById('portfolioModeStatusValue').style.color = portfolioModeOn ? 'var(--gold-bright)' : 'var(--text-dim)';
+}
+
 document.getElementById('growthRings').addEventListener('click', async ()=>{
   portfolioModeOn = !portfolioModeOn;
-  document.getElementById('portfolioModeHint').innerHTML = `🎯 右上の年輪をタップすると「配当ポートフォリオ集計モード」を切り替えられます。現在：<strong style="color:${portfolioModeOn?'var(--gold-bright)':'var(--text-dim)'};">${portfolioModeOn?'ON（成長目的の銘柄を除外中）':'OFF（全銘柄を含めて集計中）'}</strong>`;
+  updatePortfolioModeStatus();
   await dbSetSetting('portfolioModeOn', portfolioModeOn);
   renderHoldingsHeroStats();
   applyFilterAndRender();
@@ -3741,7 +3761,7 @@ document.getElementById('aliasAddBtn').addEventListener('click', addAlias);
 document.addEventListener('click', (evt)=>{
   const btn = evt.target.closest('.info-btn');
   if(!btn) return;
-  const anchor = btn.closest('.chart-head') || btn.closest('h2') || btn.closest('.map-row');
+  const anchor = btn.closest('.chart-head') || btn.closest('h2') || btn.closest('.map-row') || btn.closest('.info-anchor');
   if(!anchor) return;
   let sib = anchor.nextElementSibling;
   while(sib && sib.classList && sib.classList.contains('hint')){
@@ -3882,7 +3902,10 @@ document.getElementById('exportCsvBtn').addEventListener('click', async ()=>{
 });
 document.getElementById('clearBtn').addEventListener('click', async ()=>{
   if(confirm('保存されている全てのデータ（配当実績・保有銘柄・お知らせ・設定）を完全に削除します。元に戻せません。よろしいですか？')){
-    await dbClearAllData();
+    const { errors } = await dbClearAllData();
+    if(errors.length){
+      alert('一部のデータ削除でエラーが発生しました：\n' + errors.join('\n') + '\n\nこのままページを再読み込みします。');
+    }
     location.reload();
   }
 });
@@ -3911,7 +3934,7 @@ window.addEventListener('resize', ()=>{
   const savedPortfolioMode = await dbGetSetting('portfolioModeOn');
   if(typeof savedPortfolioMode === 'boolean'){
     portfolioModeOn = savedPortfolioMode;
-    document.getElementById('portfolioModeHint').innerHTML = `🎯 右上の年輪をタップすると「配当ポートフォリオ集計モード」を切り替えられます。現在：<strong style="color:${portfolioModeOn?'var(--gold-bright)':'var(--text-dim)'};">${portfolioModeOn?'ON（成長目的の銘柄を除外中）':'OFF（全銘柄を含めて集計中）'}</strong>`;
+    updatePortfolioModeStatus();
   }
   if(typeof savedRate === 'number' && savedRate > 0) usdToJpyRate = savedRate;
   if(typeof savedToggle === 'boolean') includeUsdConverted = savedToggle;
